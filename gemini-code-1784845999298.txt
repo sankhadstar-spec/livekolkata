@@ -1,0 +1,12 @@
+# Dependencies & Node
+node_modules/
+npm-debug.log*
+
+# Build artifacts & OS files
+dist/
+.DS_Store
+Thumbs.db
+
+# Environment & API keys
+.env
+.env.local
