@@ -1,0 +1,25 @@
+{
+  "name": "kolkata-3d-digital-twin",
+  "version": "1.0.0",
+  "description": "Interactive 3D Digital Twin of Kolkata featuring WebGL and Unreal Engine 5 Pixel Streaming.",
+  "main": "webgl-app/index.html",
+  "scripts": {
+    "start:webgl": "npx serve webgl-app",
+    "start:ue5": "npx serve ue5-pixelstreaming",
+    "build": "echo 'Client apps require no compilation step.'"
+  },
+  "keywords": [
+    "threejs",
+    "unreal-engine-5",
+    "cesium",
+    "digital-twin",
+    "kolkata",
+    "pixel-streaming",
+    "webgl"
+  ],
+  "author": "Shankh Goswami",
+  "license": "MIT",
+  "devDependencies": {
+    "serve": "^14.2.0"
+  }
+}
