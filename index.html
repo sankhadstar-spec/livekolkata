@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kolkata 3D Live Digital Twin - Dual Engine</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    body, html { width: 100%; height: 100%; overflow: hidden; background-color: #030712; color: #f8fafc; }
+    
+    /* Viewport Containers */
+    #canvas-container, #stream-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+    #stream-container { display: none; background: #000; z-index: 10; }
+    #player { width: 100%; height: 100%; object-fit: cover; }
+
+    /* Modern Glassmorphism HUD */
+    .hud-panel {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      width: 360px;
+      background: rgba(15, 23, 42, 0.8);
+      backdrop-filter: blur(16px) saturate(180%);
+      -webkit-backdrop-filter: blur(16px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 18px;
+      padding: 20px;
+      z-index: 100;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+      transition: all 0.3s ease;
+    }
+
+    .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    h1 { font-size: 20px; font-weight: 800; background: linear-gradient(135deg, #fbbf24, #f59e0b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .badge { font-size: 10px; font-weight: 700; background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); padding: 2px 8px; border-radius: 20px; letter-spacing: 0.5px; }
+    p.subtitle { font-size: 12px; color: #94a3b8; margin-bottom: 14px; }
+
+    /* Engine Switcher Bar */
+    .engine-bar {
+      display: flex;
+      background: rgba(0,0,0,0.4);
+      padding: 4px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.08);
+      margin-bottom: 14px;
+    }
+    .engine-btn {
+      flex: 1;
+      font-size: 11px;
+      padding: 7px;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      color: #94a3b8;
+      cursor: pointer;
+      font-weight: 700;
+      transition: all 0.2s ease;
+    }
+    .engine-btn.active {
+      background: #f59e0b;
+      color: #0f172a;
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+    }
+
+    /* Telemetry Grid */
+    .stats-grid {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 12px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .stat-item { display: flex; justify-content: space-between; color: #cbd5e1; }
+    .stat-item span { color: #38bdf8; font-weight: 700; font-family: monospace; }
+
+    .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; font-weight: 700; margin-bottom: 8px; display: block; }
+
+    /* Button Layouts */
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+    .btn-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    
+    button.action-btn {
+      background: rgba(30, 41, 59, 0.8);
+      color: #e2e8f0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 9px 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    button.action-btn:hover { background: #f59e0b; color: #0f172a; border-color: #f59e0b; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3); }
+    button.action-btn.active { background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #38bdf8; }
+
+    /* Landmark Cards */
+    #info-card {
+      position: absolute;
+      bottom: 24px;
+      right: 24px;
+      width: 320px;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 16px;
+      padding: 16px;
+      color: #fff;
+      display: none;
+      z-index: 100;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+      animation: slideUp 0.3s ease-out;
+    }
+    #info-card h3 { font-size: 16px; color: #fbbf24; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+    #info-card p { font-size: 12px; color: #cbd5e1; line-height: 1.5; }
+    #info-card .close-btn { cursor: pointer; font-size: 14px; color: #94a3b8; border: none; background: transparent; padding: 0; }
+
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    #instructions {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #94a3b8;
+      padding: 8px 18px;
+      border-radius: 30px;
+      font-size: 12px;
+      pointer-events: none;
+      z-index: 100;
+    }
+  </style>
+
+  <!-- Import maps polyfill for WebGL ES Module support -->
+  <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <!-- Epic Games Pixel Streaming WebRTC Bundle -->
+  <script type="text/javascript" src="https://unpkg.com/@epicgames-ps/lib-pixelstreamingweb-build@latest/dist/pixelstreamingweb.bundle.js"></script>
+</head>
+<body>
+
+  <!-- WebGL Render Canvas -->
+  <div id="canvas-container"></div>
+
+  <!-- UE5 Stream Video Container -->
+  <div id="stream-container">
+    <video id="player" autoplay playsinline muted></video>
+  </div>
+
+  <!-- Control Panel HUD -->
+  <div class="hud-panel">
+    <div class="header-row">
+      <h1>Kolkata 3D Live</h1>
+      <span class="badge" id="mode-badge">WEBGL 3D</span>
+    </div>
+    <p class="subtitle">Interactive Realtime Digital Twin & Simulator</p>
+
+    <!-- Engine Mode Toggle -->
+    <div class="engine-bar">
+      <button id="engine-webgl" class="engine-btn active" onclick="switchEngine('webgl')">🌐 WebGL Client</button>
+      <button id="engine-ue5" class="engine-btn" onclick="switchEngine('ue5')">⚡ Unreal Engine 5</button>
+    </div>
+
+    <!-- Live Telemetry -->
+    <div class="stats-grid">
+      <div class="stat-item">🚕 Taxis: <span id="taxi-count">35</span></div>
+      <div class="stat-item">🛺 Autos: <span id="auto-count">25</span></div>
+      <div class="stat-item">🚌 Buses: <span id="bus-count">18</span></div>
+      <div class="stat-item">🚇 Metro Lines: <span>2</span></div>
+      <div class="stat-item">✈️ Planes: <span>1</span></div>
+      <div class="stat-item">⚡ FPS Rate: <span id="fps-val">60</span></div>
+    </div>
+
+    <span class="section-title">Fly To Landmark:</span>
+    <div class="btn-grid">
+      <button class="action-btn" onclick="flyTo('howrah')">🌉 Howrah Bridge</button>
+      <button class="action-btn" onclick="flyTo('victoria')">🏛️ Victoria Mem.</button>
+      <button class="action-btn" onclick="flyTo('biswabangla')">🌐 Biswa Bangla</button>
+      <button class="action-btn" onclick="flyTo('parkstreet')">🏢 Park Street</button>
+      <button class="action-btn" onclick="flyTo('station')">🚆 Howrah Station</button>
+      <button class="action-btn" onclick="flyTo('orbit')">🛰️ High Orbit</button>
+    </div>
+
+    <span class="section-title">Environment / Weather:</span>
+    <div class="btn-grid-3">
+      <button id="btn-day" class="action-btn active" onclick="setEnvironment('day')">☀️ Day</button>
+      <button id="btn-night" class="action-btn" onclick="setEnvironment('night')">🌙 Night</button>
+      <button id="btn-rain" class="action-btn" onclick="setEnvironment('rain')">🌧️ Monsoon</button>
+    </div>
+  </div>
+
+  <!-- Landmark Inspection Card -->
+  <div id="info-card">
+    <h3 id="card-title">Landmark Title <button class="close-btn" onclick="closeCard()">✕</button></h3>
+    <p id="card-desc">Description about the landmark will appear here.</p>
+  </div>
+
+  <div id="instructions">Left Click + Drag: Rotate • Right Click: Pan • Scroll: Zoom • Click Objects to Inspect</div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // --- LANDMARK METADATA ---
+    const landmarkData = {
+      howrah: {
+        title: "Howrah Bridge (Rabindra Setu)",
+        desc: "Iconic cantilever bridge commissioned in 1943. Spans 705 meters over the Hooghly River without central pillars, handling thousands of vehicles daily.",
+        camPos: [-120, 45, 20], target: [-70, 5, 0]
+      },
+      victoria: {
+        title: "Victoria Memorial",
+        desc: "White Makrana marble monument constructed between 1906 and 1921. Dedicated to Queen Victoria, now Kolkata's premier museum and landmark.",
+        camPos: [95, 35, 95], target: [80, 5, 80]
+      },
+      biswabangla: {
+        title: "Biswa Bangla Gate",
+        desc: "Architectural landmark located in New Town (Sector V), featuring an elevated ring shape suspended 55 meters above the crossway.",
+        camPos: [195, 45, -115], target: [170, 15, -130]
+      },
+      parkstreet: {
+        title: "Park Street & Skyline",
+        desc: "Commercial and nightlife hub of central Kolkata, flanked by corporate high-rises, heritage buildings, and major avenues.",
+        camPos: [20, 40, 20], target: [0, 0, 0]
+      },
+      station: {
+        title: "Howrah Junction Station",
+        desc: "India's oldest and largest railway complex with 23 platforms, serving millions of commuters daily on the western bank of the river.",
+        camPos: [-50, 40, -170], target: [-40, 0, -120]
+      },
+      orbit: {
+        title: "City Wide Overview",
+        desc: "A bird's eye view showing the Hooghly River, Central Kolkata, and the Salt Lake IT corridor.",
+        camPos: [0, 260, 200], target: [20, 0, 0]
+      }
+    };
+
+    // --- WEBGL SCENE SETUP ---
+    const scene = new THREE.Scene();
+    const skyColor = new THREE.Color(0xdbeafe);
+    scene.background = skyColor;
+    scene.fog = new THREE.FogExp2(0xdbeafe, 0.002);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 2000);
+    camera.position.set(0, 260, 200);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2 - 0.02;
+
+    // --- LIGHTING ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+
+    const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.2);
+    sunLight.position.set(200, 300, 150);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.near = 10;
+    sunLight.shadow.camera.far = 800;
+    const d = 300;
+    sunLight.shadow.camera.left = -d; sunLight.shadow.camera.right = d;
+    sunLight.shadow.camera.top = d; sunLight.shadow.camera.bottom = -d;
+    scene.add(sunLight);
+
+    // --- MATERIALS ---
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.9, metalness: 0.1 });
+    const riverMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.1, metalness: 0.8 });
+    const roadMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
+    const steelMat = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.8, roughness: 0.2 });
+    const marbleMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.2, metalness: 0.1 });
+    const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x38bdf8, roughness: 0.1, metalness: 0.1, transmission: 0.6, transparent: true });
+
+    // --- GEOMETRY ---
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    const river = new THREE.Mesh(new THREE.PlaneGeometry(80, 1000), riverMat);
+    river.rotation.x = -Math.PI / 2;
+    river.position.set(-75, 0.2, 0);
+    scene.add(river);
+
+    function createRoad(w, h, x, z) {
+      const road = new THREE.Mesh(new THREE.PlaneGeometry(w, h), roadMat);
+      road.rotation.x = -Math.PI / 2;
+      road.position.set(x, 0.3, z);
+      road.receiveShadow = true;
+      scene.add(road);
+    }
+    createRoad(500, 16, 80, 0);
+    createRoad(500, 16, 80, 80);
+    createRoad(500, 16, 80, -80);
+    createRoad(16, 500, 0, 0);
+    createRoad(16, 500, 170, 0);
+
+    // Street Lamps
+    const streetLights = [];
+    function placeStreetLamps() {
+      const lampGeo = new THREE.CylinderGeometry(0.2, 0.3, 8);
+      const lampMat = new THREE.MeshStandardMaterial({ color: 0x475569 });
+      for (let x = -30; x <= 220; x += 40) {
+        for (let z of [-88, -72, -8, 8, 72, 88]) {
+          const lamp = new THREE.Mesh(lampGeo, lampMat);
+          lamp.position.set(x, 4, z);
+          scene.add(lamp);
+
+          const light = new THREE.PointLight(0xfef08a, 0, 30);
+          light.position.set(x, 8, z);
+          scene.add(light);
+          streetLights.push(light);
+        }
+      }
+    }
+    placeStreetLamps();
+
+    // Howrah Bridge
+    const bridgeGroup = new THREE.Group();
+    bridgeGroup.userData = { id: 'howrah' };
+    const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(110, 3, 20), steelMat);
+    bridgeDeck.position.set(-75, 12, 0);
+    bridgeDeck.castShadow = true;
+    bridgeGroup.add(bridgeDeck);
+
+    for (let bx of [-115, -35]) {
+      const p1 = new THREE.Mesh(new THREE.BoxGeometry(5, 42, 5), steelMat);
+      p1.position.set(bx, 22, -8);
+      const p2 = p1.clone();
+      p2.position.z = 8;
+      p1.castShadow = true; p2.castShadow = true;
+      bridgeGroup.add(p1, p2);
+
+      const topBar = new THREE.Mesh(new THREE.BoxGeometry(5, 5, 22), steelMat);
+      topBar.position.set(bx, 42, 0);
+      bridgeGroup.add(topBar);
+    }
+    scene.add(bridgeGroup);
+
+    // Victoria Memorial
+    const victoriaGroup = new THREE.Group();
+    victoriaGroup.userData = { id: 'victoria' };
+    const vicBase = new THREE.Mesh(new THREE.BoxGeometry(40, 14, 40), marbleMat);
+    vicBase.position.set(80, 7, 80);
+    vicBase.castShadow = true;
+    const vicDome = new THREE.Mesh(new THREE.SphereGeometry(12, 32, 16), marbleMat);
+    vicDome.position.set(80, 18, 80);
+    vicDome.castShadow = true;
+    victoriaGroup.add(vicBase, vicDome);
+    scene.add(victoriaGroup);
+
+    // Biswa Bangla Gate
+    const biswaGroup = new THREE.Group();
+    biswaGroup.userData = { id: 'biswabangla' };
+    const ringGeo = new THREE.TorusGeometry(18, 3, 16, 50);
+    const ring = new THREE.Mesh(ringGeo, glassMat);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(170, 22, -130);
+    biswaGroup.add(ring);
+    scene.add(biswaGroup);
+
+    // High-rise Buildings
+    const buildings = [];
+    const buildingColors = [0x38bdf8, 0x0284c7, 0x64748b, 0x475569, 0xf8fafc];
+    for (let i = 0; i < 110; i++) {
+      const h = 25 + Math.random() * 85;
+      const w = 14 + Math.random() * 16;
+      const d = 14 + Math.random() * 16;
+      const bx = 15 + Math.random() * 230;
+      const bz = -200 + Math.random() * 400;
+
+      if (Math.abs(bz) < 14 || Math.abs(bz - 80) < 14 || Math.abs(bz + 80) < 14 || Math.abs(bx - 170) < 14) continue;
+
+      const mat = new THREE.MeshStandardMaterial({
+        color: buildingColors[Math.floor(Math.random() * buildingColors.length)],
+        roughness: 0.3, metalness: 0.5
+      });
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      b.position.set(bx, h / 2, bz);
+      b.castShadow = true;
+      b.receiveShadow = true;
+      scene.add(b);
+      buildings.push(b);
+    }
+
+    // Metro Line & Train
+    const metroTrack = new THREE.Mesh(new THREE.BoxGeometry(10, 3, 500), steelMat);
+    metroTrack.position.set(170, 20, 0);
+    scene.add(metroTrack);
+
+    const metroTrain = new THREE.Mesh(new THREE.BoxGeometry(7, 7, 50), new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.9 }));
+    metroTrain.position.set(170, 24, 0);
+    scene.add(metroTrain);
+
+    // Airplane (CCU)
+    const planeGroup = new THREE.Group();
+    const planeBody = new THREE.Mesh(new THREE.ConeGeometry(3, 16, 8), new THREE.MeshStandardMaterial({ color: 0xf8fafc }));
+    planeBody.rotation.x = Math.PI / 2;
+    const planeWings = new THREE.Mesh(new THREE.BoxGeometry(18, 0.5, 4), new THREE.MeshStandardMaterial({ color: 0x0284c7 }));
+    planeGroup.add(planeBody, planeWings);
+    planeGroup.position.set(-200, 120, -100);
+    scene.add(planeGroup);
+
+    // Pedestrians
+    const pedestrians = [];
+    const pedGeo = new THREE.CylinderGeometry(0.5, 0.5, 2.2);
+    const pedMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+    for (let i = 0; i < 120; i++) {
+      const ped = new THREE.Mesh(pedGeo, pedMat);
+      ped.position.set(Math.random() * 200, 1.1, Math.random() * 200 - 100);
+      scene.add(ped);
+      pedestrians.push({
+        mesh: ped,
+        vx: (Math.random() - 0.5) * 0.15,
+        vz: (Math.random() - 0.5) * 0.15
+      });
+    }
+
+    // --- LIVE TRAFFIC ENTITIES ---
+    const vehicles = [];
+    const yellowTaxiMat = new THREE.MeshStandardMaterial({ color: 0xfcb316, roughness: 0.3 });
+    const autoMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.4 });
+    const busMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.4 });
+
+    function createVehicle(type, zLane) {
+      let geo, mat, speed;
+      if (type === 'taxi') {
+        geo = new THREE.BoxGeometry(4, 2.5, 7.5); mat = yellowTaxiMat; speed = 0.6 + Math.random() * 0.4;
+      } else if (type === 'auto') {
+        geo = new THREE.BoxGeometry(3, 2.2, 5); mat = autoMat; speed = 0.4 + Math.random() * 0.3;
+      } else {
+        geo = new THREE.BoxGeometry(6, 4.8, 16); mat = busMat; speed = 0.35 + Math.random() * 0.2;
+      }
+
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(-120 + Math.random() * 320, 1.6, zLane + (Math.random() * 6 - 3));
+      mesh.castShadow = true;
+      scene.add(mesh);
+
+      const light = new THREE.SpotLight(0xfffbeb, 0, 40, Math.PI / 6, 0.5);
+      light.position.set(0, 1, 3);
+      light.target.position.set(0, 0, 15);
+      mesh.add(light);
+      mesh.add(light.target);
+
+      vehicles.push({ mesh, speed, light });
+    }
+
+    for (let i = 0; i < 35; i++) createVehicle('taxi', 0);
+    for (let i = 0; i < 25; i++) createVehicle('auto', 80);
+    for (let i = 0; i < 18; i++) createVehicle('bus', -80);
+
+    // --- MONSOON RAIN SYSTEM ---
+    const rainCount = 2000;
+    const rainGeo = new THREE.BufferGeometry();
+    const rainPositions = new Float32Array(rainCount * 3);
+    for (let i = 0; i < rainCount * 3; i += 3) {
+      rainPositions[i] = Math.random() * 500 - 250;
+      rainPositions[i + 1] = Math.random() * 250;
+      rainPositions[i + 2] = Math.random() * 500 - 250;
+    }
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+    const rainMat = new THREE.PointsMaterial({ color: 0x93c5fd, size: 0.8, transparent: true, opacity: 0.6 });
+    const rainSystem = new THREE.Points(rainGeo, rainMat);
+    rainSystem.visible = false;
+    scene.add(rainSystem);
+
+    // --- INTERACTIVE CONTROLLER LOGIC ---
+    let targetCam = null;
+    let targetLook = null;
+
+    window.flyTo = function(key) {
+      const lm = landmarkData[key];
+      if (!lm) return;
+      targetCam = new THREE.Vector3(...lm.camPos);
+      targetLook = new THREE.Vector3(...lm.target);
+
+      document.getElementById('card-title').innerText = lm.title;
+      document.getElementById('card-desc').innerText = lm.desc;
+      document.getElementById('info-card').style.display = 'block';
+    };
+
+    window.closeCard = function() {
+      document.getElementById('info-card').style.display = 'none';
+    };
+
+    window.setEnvironment = function(mode) {
+      document.querySelectorAll('.btn-grid-3 button').forEach(b => b.classList.remove('active'));
+      document.getElementById(`btn-${mode}`).classList.add('active');
+
+      if (mode === 'day') {
+        scene.background = skyColor;
+        scene.fog.color = skyColor;
+        ambientLight.intensity = 0.7;
+        sunLight.intensity = 1.2;
+        rainSystem.visible = false;
+        streetLights.forEach(l => l.intensity = 0);
+        vehicles.forEach(v => v.light.intensity = 0);
+      } else if (mode === 'night') {
+        const nightBg = new THREE.Color(0x030712);
+        scene.background = nightBg;
+        scene.fog.color = nightBg;
+        ambientLight.intensity = 0.15;
+        sunLight.intensity = 0.1;
+        rainSystem.visible = false;
+        streetLights.forEach(l => l.intensity = 2.0);
+        vehicles.forEach(v => v.light.intensity = 3.0);
+      } else if (mode === 'rain') {
+        const rainBg = new THREE.Color(0x1e293b);
+        scene.background = rainBg;
+        scene.fog.color = rainBg;
+        ambientLight.intensity = 0.3;
+        sunLight.intensity = 0.3;
+        rainSystem.visible = true;
+        streetLights.forEach(l => l.intensity = 1.5);
+        vehicles.forEach(v => v.light.intensity = 2.0);
+      }
+    };
+
+    // --- ENGINE SWITCHER LOGIC ---
+    let ue5Stream = null;
+
+    window.switchEngine = function(mode) {
+      document.getElementById('engine-webgl').classList.remove('active');
+      document.getElementById('engine-ue5').classList.remove('active');
+
+      if (mode === 'webgl') {
+        document.getElementById('engine-webgl').classList.add('active');
+        document.getElementById('canvas-container').style.display = 'block';
+        document.getElementById('stream-container').style.display = 'none';
+        document.getElementById('mode-badge').innerText = 'WEBGL 3D';
+      } else if (mode === 'ue5') {
+        document.getElementById('engine-ue5').classList.add('active');
+        document.getElementById('canvas-container').style.display = 'none';
+        document.getElementById('stream-container').style.display = 'block';
+        document.getElementById('mode-badge').innerText = 'UNREAL ENGINE 5';
+
+        if (!ue5Stream && window.pixelstreamingweb) {
+          const config = { initialSettings: { AutoPlayVideo: true, AutoConnect: true, StartVideoMuted: true } };
+          ue5Stream = new pixelstreamingweb.PixelStreaming('ws://localhost:8888', config);
+          ue5Stream.addEventListener('streamReady', (e) => {
+            document.getElementById('player').srcObject = e.detail.stream;
+          });
+        }
+      }
+    };
+
+    // --- RAYCASTING CLICK INTERACTION ---
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    window.addEventListener('click', (e) => {
+      if (e.target.closest('.hud-panel') || e.target.closest('#info-card')) return;
+
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersects = raycaster.intersectObjects([bridgeGroup, victoriaGroup, biswaGroup], true);
+      if (intersects.length > 0) {
+        let parent = intersects[0].object.parent;
+        while (parent && !parent.userData.id) parent = parent.parent;
+        if (parent && parent.userData.id) flyTo(parent.userData.id);
+      }
+    });
+
+    // --- ANIMATION LOOP ---
+    let lastTime = performance.now();
+    let frameCount = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Vehicles
+      for (let v of vehicles) {
+        v.mesh.position.x += v.speed;
+        if (v.mesh.position.x > 260) v.mesh.position.x = -130;
+      }
+
+      // Metro
+      metroTrain.position.z += 1.0;
+      if (metroTrain.position.z > 250) metroTrain.position.z = -250;
+
+      // Plane
+      planeGroup.position.x += 0.8;
+      if (planeGroup.position.x > 300) planeGroup.position.x = -300;
+
+      // Pedestrians
+      for (let p of pedestrians) {
+        p.mesh.position.x += p.vx;
+        p.mesh.position.z += p.vz;
+        if (Math.abs(p.mesh.position.x) > 200) p.vx *= -1;
+        if (Math.abs(p.mesh.position.z) > 200) p.vz *= -1;
+      }
+
+      // Rain
+      if (rainSystem.visible) {
+        const positions = rainGeo.attributes.position.array;
+        for (let i = 1; i < rainCount * 3; i += 3) {
+          positions[i] -= 3.5;
+          if (positions[i] < 0) positions[i] = 220;
+        }
+        rainGeo.attributes.position.needsUpdate = true;
+      }
+
+      // Camera Lerp
+      if (targetCam) {
+        camera.position.lerp(targetCam, 0.05);
+        controls.target.lerp(targetLook, 0.05);
+        if (camera.position.distanceTo(targetCam) < 1) targetCam = null;
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+
+      // FPS Counter
+      frameCount++;
+      const now = performance.now();
+      if (now - lastTime >= 1000) {
+        document.getElementById('fps-val').innerText = frameCount;
+        frameCount = 0;
+        lastTime = now;
+      }
+    }
+
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
